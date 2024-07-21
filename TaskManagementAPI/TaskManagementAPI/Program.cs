@@ -1,8 +1,14 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Models;
 using Serilog;
+using System;
 using System.Reflection;
 using TaskManagementAPI.Common;
+using TaskManagementAPI.Manager.Abstract;
+using TaskManagementAPI.Manager.Concrete;
+using TaskManagementAPI.Repository.Abstract;
+using TaskManagementAPI.Repository.Concrete;
 
 var builder = WebApplication.CreateBuilder(args);
 var environment = builder.Environment;
@@ -17,17 +23,30 @@ var logger = new LoggerConfiguration()
     .WriteTo.Console()
     .CreateLogger();
 builder.Logging.ClearProviders();
-var virtualDirectory = builder.Configuration.GetSection("AppSettings").GetValue<string>("VirtualDirectory");
 builder.Logging.AddSerilog(logger);
 builder.Services.AddCors();
-builder.Services.AddControllers().AddNewtonsoftJson(options =>
-{
-    options.SerializerSettings.NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore;
-});
+builder.Services.AddControllers();
+var timeZone = DateTime.Now;
+var timeZOne2 = DateTime.UtcNow;
+var DBConnectionString = builder.Configuration.GetSection("ConnectionStrings").GetValue<string>("DBConnectionString");
+//builder.Services.AddDbContext<AppDbContext>(options =>
+//        options.UseNpgsql(DBConnectionString)
+//    );
+
+builder.Services.AddTransient<IAuthenticateManager, AuthenticateManager>();
+builder.Services.AddTransient<IAuthenticateRepository, AuthenticateRepository>();
+builder.Services.AddTransient<ITaskManagementManager, TaskManagementManager>();
+builder.Services.AddTransient<ITaskManagementRepository, TaskManagementRepository>();
+var dbContextOptions = new DbContextOptionsBuilder<AppDbContext>()
+        .UseNpgsql(DBConnectionString) 
+        .Options;
+var dbContext = new AppDbContext(dbContextOptions);
+builder.Services.AddSingleton<AppDbContext>(dbContext);
 builder.Services.AddHttpContextAccessor();
 builder.Services.ConfigureJWT(builder.Configuration);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
 var app = builder.Build();
 if (app.Environment.IsDevelopment())
 {

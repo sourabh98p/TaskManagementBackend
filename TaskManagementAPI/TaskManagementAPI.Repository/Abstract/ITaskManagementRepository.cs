@@ -1,15 +1,18 @@
-﻿//using IntegrationAPI.Domain.Request;
-//using IntegrationAPI.Domain.Response.DALResponse;
-//using KastlePMIntegration.Common;
-//using System.Threading.Tasks;
+﻿using TaskManagementAPI.Common;
 
-//namespace TaskManagementAPI.Repository.Abstract
-//{
-//    public interface ITaskManagementRepository
-//    {
-//        ValidateExternalNumberDalResponse ValidateExternalNumber(string externalNumber);
-//        Task<InsertCardDetailDalResponse> CreateDigitalCardAsync(NCCardDalRequest request);
-//        Task<ReaderGroupIdAndPublicKeyDalResponse> GetReaderGroupIdAndReaderPublicKey(int cardholderid);
-//        Task<OperationStatus> UpdateAliroCardStatus(UpdateAliroCardRequest request);
-//    }
-//}
+namespace TaskManagementAPI.Repository.Abstract
+{
+    public interface ITaskManagementRepository
+    {
+        Task<bool> CreateTaskAsync(TaskDetails task);
+        Task<bool> UpdateTaskAsync(TaskDetails updatedTask);
+        Task<bool> deleteTaskAsync(int id);
+        Task<List<ReportResponse>> GetTaskReportAsync(ReportRequest request);
+        Task<TaskDetails> GetTaskAsync(int id);
+        Task<List<TaskDetails>> GetEmployeeTaskListAsync(int userid);
+        Task<managerDashboard> GetTasksAndEmployeesListAsync(int teamid);
+        Task<TaskDetailsEmployee> GetTaskDetailsEmployeeAsync(int taskid);
+        Task<int> AddTaskNoteAsync(Note newNote);
+        Task<int> AddTaskAttachmentAsync(Attachment newAttachment);
+    }
+}

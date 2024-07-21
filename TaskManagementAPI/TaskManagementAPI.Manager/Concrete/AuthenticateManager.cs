@@ -42,15 +42,17 @@ namespace TaskManagementAPI.Manager.Concrete
         {
             _logger.LogInformation("Manager ValidateUser -> Start");
             ServiceResponse<loginResponse> response = new ServiceResponse<loginResponse>();
+            var res = new loginResponse() { TokenDetails = new TokenDetails(), UserDetails = new UserDetails()};
             try
             {
                 (UserDetails dalResponse, bool IsSuccess) = await _authenticateRepository.ValidateUser(request);
                 if (dalResponse != null && IsSuccess)
                 {
-                    var accessToken = Utility.GetSecurityToken(request.email,  DateTime.UtcNow, _appSettings, TokenType.AccessToken);
-                    var refreshToken = Utility.GetSecurityToken(request.email,  DateTime.UtcNow, _appSettings, TokenType.RefreshToken);
-                    response.Data.UserDetails = dalResponse;
-                    response.Data.TokenDetails = new TokenDetails
+                    var accessToken = Utility.GetSecurityToken(request.email,  DateTime.Now, _appSettings, TokenType.AccessToken);
+                    var refreshToken = Utility.GetSecurityToken(request.email,  DateTime.Now, _appSettings, TokenType.RefreshToken);
+
+                    res.UserDetails = dalResponse;
+                    res.TokenDetails = new TokenDetails
                     {
                         AccessToken = accessToken.token,
                         Expires_In = accessToken.expiresIn,
@@ -58,23 +60,24 @@ namespace TaskManagementAPI.Manager.Concrete
                         RefreshToken = refreshToken.token,
                         RefreshTokenExpriationDate = refreshToken.tokenExpireDate
                     };
+                    response.Data = res;
                     response.IsSuccess = true;
-                    response.Message = "Successfully !";
+                    response.Message = Constants.SuccessMessage;
                 }
                 else
                 {
-                    response.Data = new loginResponse();
+                    response.Data = new loginResponse() { TokenDetails = new TokenDetails(), UserDetails = new UserDetails() };
                     response.IsSuccess = false;
-                    response.Message = "An unexpected error has occurred. Please try again !";
+                    response.Message = Constants.ErrorMessage;
 
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError($"Error Message:{ex.Message}{Environment.NewLine} STACK TRACE:{ex.StackTrace}");
-                response.Data = new loginResponse();
+                response.Data = new loginResponse() { TokenDetails = new TokenDetails(), UserDetails = new UserDetails() };
                 response.IsSuccess = false;
-                response.Message = "An unexpected error has occurred. Please try again !";
+                response.Message = Constants.ErrorMessage;
 
 
             }
@@ -105,14 +108,14 @@ namespace TaskManagementAPI.Manager.Concrete
                         TokenExpriationDate = accessToken.tokenExpireDate
                 };
                 response.IsSuccess = true;
-                response.Message = "Token refresh successfully !";
+                response.Message = Constants.SuccessMessage;
             }
             catch (Exception ex)
             {
                 _logger.LogError($"Error Message:{ex.Message}{Environment.NewLine} STACK TRACE:{ex.StackTrace}");
                 response.Data = new TokenDetails();
                 response.IsSuccess = false;
-                response.Message = "An unexpected error has occurred. Please try again !";
+                response.Message = Constants.ErrorMessage;
             }
 
             _logger.LogInformation("Manager RefreshToken -> End");

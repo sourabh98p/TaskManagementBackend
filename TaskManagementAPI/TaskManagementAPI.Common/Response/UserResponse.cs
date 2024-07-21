@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -11,14 +12,17 @@ namespace TaskManagementAPI.Common.Response
         public UserDetails UserDetails { get; set; }
         public TokenDetails TokenDetails { get; set; }
     }
-    public class UserDetails
-    { 
-        public string fullname {  get; set; }
-        public int UserId { get; set; }
+
+    public class User
+    {
+        public string fullName { get; set; }
+        public int userId { get; set; }
         public string email { get; set; }
         public string role { get; set; }
-        public int teamid { get; set; }
-  
+    }
+    public class UserDetails : User
+    {   
+        public int? teamId { get; set; }
     }
     public class TokenDetails
     {

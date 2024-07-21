@@ -14,7 +14,7 @@ namespace TaskManagementAPI.Controllers
     /// Authenticate Controller
     /// </summary>
     [Produces("application/json")]
-    [Route("kiapi/[controller]")]
+    [Route("tapi/[controller]")]
     [ApiController]
     public class AuthenticateController : ControllerBase
     {
@@ -48,7 +48,6 @@ namespace TaskManagementAPI.Controllers
         public async Task<IActionResult> ValidateUser([FromBody] LoginRequest request)
         {
             var response = await _authenticateManager.ValidateUser(request);
-            _httpContext.Request.Headers.Add("PMName", "");
             return Ok(response);
         }
         
@@ -64,7 +63,7 @@ namespace TaskManagementAPI.Controllers
             string tokentype = Utility.ClaimDetail(_httpContext, JwtRegisteredClaimNames.Typ);
             if (string.IsNullOrWhiteSpace(tokentype) || tokentype != "refresh_token")
             {
-                string message = "An unexpected error has occurred. Please try again !";
+                string message = Constants.ErrorMessage;
                 return BadRequest(message);
             }
             string userName = Utility.ClaimDetail(_httpContext, ClaimTypes.Name);

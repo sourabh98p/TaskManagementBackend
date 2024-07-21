@@ -1,409 +1,516 @@
-﻿//using Azure.Core;
-//using Dapper;
-//using IntegrationAPI.Common;
-//using IntegrationAPI.Domain.Entities;
-//using IntegrationAPI.Domain.Request;
-//using IntegrationAPI.Domain.Response.DALResponse;
-//using IntegrationAPI.Repository.Abstract;
-//using IntegrationAPI.Repository.DbConstants;
-//using KastlePMIntegration.Common;
-//using Microsoft.AspNetCore.Http;
-//using Microsoft.Data.SqlClient;
-//using Microsoft.Extensions.Options;
-//using Newtonsoft.Json;
-//using System;
-//using System.Collections.Generic;
-//using System.Data;
-//using System.Diagnostics.CodeAnalysis;
-//using System.Reflection;
-//using System.Text;
-//using System.Threading.Tasks;
-//using GooleWalletUtilities = IntegrationAPI.Common.GooleWalletUtilities;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Microsoft.VisualBasic;
+using Npgsql;
+using System.Data;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading.Tasks;
+using TaskManagementAPI.Common;
+using TaskManagementAPI.Common.Response;
+using TaskManagementAPI.Repository.Abstract;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory;
 
-//namespace TaskManagementAPI.Repository.Concrete
-//{
-//    public class TaskManagementRepository : ITaskManagementRepository
-//    {
-//        /// <summary>
-//        /// The logger
-//        /// </summary>
-//        private readonly IKastleLogger _logger;
 
-//        /// <summary>
-//        /// The object SQL
-//        /// </summary>
-//        private readonly ISqlHelper _objSql;
+namespace TaskManagementAPI.Repository.Concrete
+{
+    public class TaskManagementRepository : ITaskManagementRepository
+    {
+        private readonly AppDbContext _dbContext;
+        private readonly ILogger<TaskManagementRepository> _logger;
+        private readonly ConnectionStrings _connectionStrings;
+        public TaskManagementRepository(ILogger<TaskManagementRepository> logger, AppDbContext dbContext, IOptionsSnapshot<ConnectionStrings> connectionString)
+        {
+            _dbContext = dbContext;
+            _logger = logger;
+            _connectionStrings = connectionString.Value;
+        }
 
-//        public ConnectionStrings _connectionStrings { get; set; }
+        public async Task<bool> CreateTaskAsync(TaskDetails task)
+        {
+            bool res = true;
+            _logger.LogInformation("CreateTaskAsync Repo -> Start");
+            try
+            {
+                _dbContext.tasks.Add(task);
+                await _dbContext.SaveChangesAsync();
 
-//        [ExcludeFromCodeCoverage]
-//        /// <summary>
-//        /// Save Kastle Pet Info
-//        /// </summary>
-//        /// <param name="request"></param>
-//        /// <returns></returns>
-//        public TaskManagementRepository(IKastleLogger logger, IOptions<ConnectionStrings> connectionStrings, IOptionsSnapshot<AppSettings> appSettings)
-//        {
-//            _logger = logger;
-//            _connectionStrings = connectionStrings.Value;
-//            _objSql = new SqlHelper(_connectionStrings.NCAdb, appSettings.Value.SQLCommandTimeOut, maxpoolsize: appSettings.Value.DbMaxPoolSize);
-//        }
+            }
+            catch (Exception ex)
+            {
+                res = false;
+                _logger.LogError($"Error inserting task: {ex.Message}");  
+            }
+            _logger.LogInformation("CreateTaskAsync Repo -> End");
+            return res;
+        }
 
-//        public ValidateExternalNumberDalResponse ValidateExternalNumber(string externalNumber)
-//        {
+        public async Task<bool> UpdateTaskAsync(TaskDetails updatedTask)
+        {
+            bool res = true;
+            _logger.LogInformation("UpdateTaskAsync Repo -> Start");
+            try
+            {
+                var existingTask = await _dbContext.tasks.FindAsync(updatedTask.id);
 
-//            _logger.LogInformationStart($"[ValidateExternalNumber] :: Request: {externalNumber}");
-//            // Get Db connection key
-//            var response = new ValidateExternalNumberDalResponse { IsSuccess = true };
-//            try
-//            {
-//                var InlineString = InLineQueries.VALIDATEEXTERNALNUMBER;
-//                List<SqlParameter> paramcollection = new List<SqlParameter>
-//                {
-//                    new SqlParameter(DBParamNames.EXTERNALNUMBER, SqlDbType.VarChar)
-//                    {
-//                        Value = externalNumber
-//                    }
+                if (existingTask == null)
+                {
+                    return false;
+                }
 
-//                };
-//                SqlParameter recordCount = new SqlParameter(DBParamNames.RECORDCOUNT, SqlDbType.Int);
-//                recordCount.Direction = ParameterDirection.Output;
-//                paramcollection.Add(recordCount);
-//                int externalCount ;
-//                _objSql.ExecuteDataSetQueryStringDB(InlineString, paramcollection);
-//                response.ExternalNumberCount = int.TryParse(Convert.ToString(recordCount.Value), out externalCount) ? externalCount : 1;
+                // Update properties of existingTask with updatedTask data
+                existingTask.title = updatedTask.title;
+                existingTask.description = updatedTask.description;
+                existingTask.status = updatedTask.status;
+                existingTask.dueDate = updatedTask.dueDate;
+                existingTask.createdBy = updatedTask.createdBy;
+                existingTask.assignedTo = updatedTask.assignedTo;
+                existingTask.completedAt = updatedTask.completedAt;
+                existingTask.updatedAt = DateTime.UtcNow;
 
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError($"[ValidateExternalNumber] :: Exception: {JsonConvert.SerializeObject(ex)}");
-//                response = new ValidateExternalNumberDalResponse { IsSuccess = false, Message = ApiError.InternalError , ExternalNumberCount = -1 };
-//            }
-//            _logger.LogInformationEnd();
-//            return response;
-//        }
+                _dbContext.Entry(existingTask).State = EntityState.Modified;
+                await _dbContext.SaveChangesAsync();
 
-//        public async Task<InsertCardDetailDalResponse> CreateDigitalCardAsync(NCCardDalRequest request)
-//        {
+            }
+            catch (Exception ex)
+            {
+                res = false;
+                _logger.LogError($"Error inserting task: {ex.Message}");
+            }
+            _logger.LogInformation("UpdateTaskAsync Repo -> End");
+            return res;
+        }
+        public async Task<bool> deleteTaskAsync(int id)
+        {
+            bool res = true;
+            _logger.LogInformation("deleteTaskAsync Repo -> Start");
+            try
+            {
+                var task = await _dbContext.tasks.FindAsync(id);
 
-//            _logger.LogInformationStart("GetReaderGroupIdAndReaderPublicKey - > Request: {Request})", JsonConvert.SerializeObject(request));
-//            // Get Db connection key
-//            var response = new InsertCardDetailDalResponse { IsSuccess = true };
-//            try
-//            {
-//                var GetCardidSting = InLineQueries.GETCARDID;
-//                List<SqlParameter> paramcollectionForGetCard = new List<SqlParameter>();
-//                SqlParameter CardId = new SqlParameter(DBParamNames.CARDID, SqlDbType.Int);
-//                CardId.Direction = ParameterDirection.Output;
-//                paramcollectionForGetCard.Add(CardId);
-//                int uniqueCardId;
-//                await _objSql.ExecuteDataSetQueryStringDB(GetCardidSting, paramcollectionForGetCard);
-//                response.CardId = int.TryParse(Convert.ToString(CardId.Value), out uniqueCardId) ? uniqueCardId : 0;
-//                var InlineString = InLineQueries.INSERTCARDDETAILS;
-//                var NCCredetialbyte = GooleWalletUtilities.HexStringToByteArray(request.NCCredential);
-//                List<SqlParameter> paramcollection = new List<SqlParameter>
-//                {   new SqlParameter("@NCCardId", SqlDbType.Int) { Value = response.CardId },
-//                    new SqlParameter("@NCGeneration", SqlDbType.Int) { Value = request.NCGeneration },
-//                    new SqlParameter("@NCActiveType", SqlDbType.VarChar) { Value = request.NCActiveType },
-//                    new SqlParameter("@NCRestoreType", SqlDbType.VarChar) { Value = request.NCRestoreType },
-//                    new SqlParameter("@NCActiveClass", SqlDbType.VarChar) { Value = request.NCActiveClass },
-//                    new SqlParameter("@NCRestoreClass", SqlDbType.VarChar) { Value = request.NCRestoreClass },
-//                    new SqlParameter("@NCLockoutClass", SqlDbType.VarChar) { Value = request.NCLockoutClass },
-//                    new SqlParameter("@NCLockoutMap", SqlDbType.VarChar) { Value = request.NCLockoutMap },
-//                    new SqlParameter("@NCPriority", SqlDbType.Int) { Value = request.NCPriority },
-//                    new SqlParameter("@NCEffective", SqlDbType.DateTime) { Value = request.NCEffective },
-//                    new SqlParameter("@NCExpire", SqlDbType.DateTime) { Value = request.NCExpire},
-//                    new SqlParameter("@NCCityCode", SqlDbType.Int) { Value = request.NCCityCode },
-//                    new SqlParameter("@NCOfflineCode", SqlDbType.Int) { Value = request.NCOfflineCode },
-//                    new SqlParameter("@NCCardNumber", SqlDbType.Int) { Value = request.NCCardNumber },
-//                    new SqlParameter("@NCExternalNumber", SqlDbType.VarChar) { Value = request.NCExternalNumber },
-//                    new SqlParameter("@NCAuthGroupID", SqlDbType.Int) { Value =  request.NCAuthGroupID},
-//                    new SqlParameter("@NCFCGroupID", SqlDbType.Int) { Value = request.NCFCGroupID },
-//                    new SqlParameter("@NCCardHolderID", SqlDbType.Int) { Value = request.NCCardHolderID },
-//                    new SqlParameter("@NCStatus", SqlDbType.VarChar) { Value = request.NCStatus },
-//                    new SqlParameter("@NCLastUpdate", SqlDbType.DateTime) { Value = request.NCLastUpdate },
-//                    new SqlParameter("@NCUpdateBy", SqlDbType.Int) { Value = request.NCUpdateBy },
-//                    new SqlParameter("@NCAuthorizerID", SqlDbType.Int) { Value = request.NCAuthorizerID },
-//                    new SqlParameter("@NCCityID", SqlDbType.Int) { Value = request.NCCityID },
-//                    new SqlParameter("@NCFlags", SqlDbType.Int) { Value = request.NCFlags },
-//                    new SqlParameter("@NCProcessed", SqlDbType.DateTime) { Value = request.NCLastUpdate },
-//                    new SqlParameter("@NCFuture", SqlDbType.VarChar) { Value = request.NCFuture },
-//                    new SqlParameter("@NCReaderTechId", SqlDbType.Int) { Value = request.NCReaderTechId },
-//                    new SqlParameter("@NCCredential", SqlDbType.VarBinary) { Value = NCCredetialbyte },
-//                    new SqlParameter("@NCCardFormatID", SqlDbType.Int) { Value = request.NCCardFormatId }
-//                };
-//                await _objSql.ExecuteDataSetQueryStringDB(InlineString, paramcollection);
-               
-//                var GetInstID = InLineQueries.GETINSTID;
-//                List<SqlParameter> paramcollectionForIstID = new List<SqlParameter>
-//                {  
-//                    new SqlParameter("@NCCardHolderID", SqlDbType.Int) { Value = request.NCCardHolderID }
-//                };
-//                DataSet resultSet = await _objSql.ExecuteDataSetQueryStringDB(GetInstID, paramcollectionForIstID);
-//                int instID=0;
-//                if (resultSet != null && resultSet.Tables.Count > 0 && resultSet.Tables[0].Rows.Count > 0)
-//                {
-//                    object result = resultSet.Tables[0].Rows[0][0];
+                if (task == null)
+                {
+                    return false;
+                }
 
-//                    if (result != DBNull.Value)
-//                    {
-//                        instID = Convert.ToInt32(result);
-//                    }
-//                }
-//                var GetSourceId = InLineQueries.GETSOURCEID;
-//                DataSet dataSet = await _objSql.ExecuteDataSetQueryStringDB(GetSourceId, null);
-//                int SourceID = 0;
-//                if (dataSet != null && dataSet.Tables.Count > 0 && dataSet.Tables[0].Rows.Count > 0)
-//                {
-//                    object result = dataSet.Tables[0].Rows[0][1];
+                _dbContext.tasks.Remove(task);
+                await _dbContext.SaveChangesAsync();
 
-//                    if (result != DBNull.Value)
-//                    {
-//                        SourceID = Convert.ToInt32(result);
-//                    }
-//                }
-//                var InlineStringforNCCredentialMapping = InLineQueries.INSERTCREDENTIALMAPPING;
-//                // Parameter collection for the NCCredentialMapping table
-//                Guid GuidId = Guid.NewGuid();
-//                var requestCredentialMapping = new
-//                {
-//                    NCAltGUId = GuidId,
-//                    NCKastleCredentialGUID = GuidId,
-//                    NCSourceId = SourceID,
-//                    NCInstID = instID, 
-//                    NCCredentialFormatMappingID = (int?)null,
-//                    NCFlags = request.NCFlags,
-//                    NCLastUpdate = DateTime.Now,
-//                    NCLastUpdateBy = request.NCUpdateBy,
-//                    NCValueEncoding = (int?)null
-//                };
-//                // Creating SqlParameter list for the NCCredentialMapping table
-//                List<SqlParameter> paramcollectionCredentialMapping = new List<SqlParameter>
-//                {
-//                    new SqlParameter("@NCCardId", SqlDbType.Int) { Value = response.CardId },
-//                    new SqlParameter("@NCAltGUId", SqlDbType.UniqueIdentifier) { Value = requestCredentialMapping.NCAltGUId },
-//                    new SqlParameter("@NCKastleCredentialGUID", SqlDbType.UniqueIdentifier) { Value = requestCredentialMapping.NCKastleCredentialGUID },
-//                    new SqlParameter("@NCSourceId", SqlDbType.Int) { Value = requestCredentialMapping.NCSourceId },
-//                    new SqlParameter("@NCInstID", SqlDbType.Int) { Value = requestCredentialMapping.NCInstID },
-//                    new SqlParameter("@NCCredentialFormatMappingID", SqlDbType.Int) { Value = (object)requestCredentialMapping.NCCredentialFormatMappingID  ?? DBNull.Value },
-//                    new SqlParameter("@NCFlags", SqlDbType.Int) { Value = requestCredentialMapping.NCFlags },
-//                    new SqlParameter("@NCLastUpdate", SqlDbType.DateTime) { Value = requestCredentialMapping.NCLastUpdate },
-//                    new SqlParameter("@NCLastUpdateBy", SqlDbType.Int) { Value = requestCredentialMapping.NCLastUpdateBy },
-//                    new SqlParameter("@NCValueEncoding", SqlDbType.Int) { Value = (object)requestCredentialMapping.NCValueEncoding ?? DBNull.Value } // Handling null values
-//                };
-//                await _objSql.ExecuteDataSetQueryStringDB(InlineStringforNCCredentialMapping, paramcollectionCredentialMapping);
+            }
+            catch (Exception ex)
+            {
+                res = false;
+                _logger.LogError($"Error inserting task: {ex.Message}");
+            }
+            _logger.LogInformation("deleteTaskAsync Repo -> End");
+            return res;
+        }
 
-//                var InlineStringforNCCardOwnerInstMapping = InLineQueries.NCCARDOWNERINST;
-//                // Parameter collection for the NCCredentialMapping table
-//                var requestNCCardOwnerInstMapping = new
-//                {
-//                    NCOwnerInst = instID,
-//                    NCFlags = request.NCFlags,
-//                    NCUpdateBy = request.NCUpdateBy,
-//                    NCUpdateDate = DateTime.UtcNow,
-//                };
-//                // Creating SqlParameter list for the NCCredentialMapping table
-//                List<SqlParameter> paramcollectionNCCardOwnerInstMapping = new List<SqlParameter>
-//                {
-//                    new SqlParameter("@NCCardId", SqlDbType.Int) { Value = response.CardId },
-//                    new SqlParameter("@NCOwnerInst", SqlDbType.Int) { Value = requestNCCardOwnerInstMapping.NCOwnerInst },
-//                    new SqlParameter("@NCFlags", SqlDbType.Int) { Value = requestNCCardOwnerInstMapping.NCFlags },
-//                    new SqlParameter("@NCUpdateBY", SqlDbType.Int) { Value = requestNCCardOwnerInstMapping.NCUpdateBy },
-//                    new SqlParameter("@NCLastUpdate", SqlDbType.DateTime) { Value = requestNCCardOwnerInstMapping.NCUpdateDate },
-//                };
-//                await _objSql.ExecuteDataSetQueryStringDB(InlineStringforNCCardOwnerInstMapping, paramcollectionNCCardOwnerInstMapping);
-//                //Creating inline for INSERT INTO CHANGEHISTORY TABLE
-//                var InlineChangeHistory = InLineQueries.INSERTINTOCHANGEHISTORY;
-//                //getting the NCID 
-//                var UpdateNCid = InLineQueries.UpdateNCID;
-//                List<SqlParameter> objParams = new List<SqlParameter>();
-//                {
-//                    objParams.Add(new SqlParameter("@NCTableId", SqlDbType.Int)
-//                    {
-//                        Value = Convert.ToInt32(CommonConstants.NCTableId)
-//                    }) ;
-//                };
-//                await _objSql.ExecuteDataSetQueryStringDB(UpdateNCid, objParams);
+        public async Task<TaskDetails> GetTaskAsync(int id)
+        {
+            _logger.LogInformation("GetTaskAsync Repo -> Start");
+            try
+            {
+                var res = await _dbContext.tasks.FindAsync(id);
+                _logger.LogInformation("GetTaskAsync Repo -> End");
+                return res;
 
-//                var GetNcid = InLineQueries.GetNCID;
-//                List<SqlParameter> paramcollectionForNCID = new List<SqlParameter>();
-//                SqlParameter NCId = new SqlParameter("@NCTableId", SqlDbType.Int) { Value = Convert.ToInt32(CommonConstants.NCTableId) };
-//                paramcollectionForGetCard.Add(NCId);
-//                SqlParameter ID = new SqlParameter("@nextid", SqlDbType.Int);
-//                ID.Direction = ParameterDirection.Output;
-//                paramcollectionForGetCard.Add(ID);
-//                await _objSql.ExecuteDataSetQueryStringDB(GetNcid, paramcollectionForNCID);
-//                int NcID;
-//                response.NCid = int.TryParse(Convert.ToString(ID.Value), out NcID) ? NcID : 0;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error inserting task: {ex.Message}");
+                return null;
+            }
+            
+        }
 
-//                List<SqlParameter> ChangeHistorycollection = new List<SqlParameter>
-//                {
-//                    new SqlParameter("@NCId", SqlDbType.Int) { Value = response.NCid },
-//                    new SqlParameter("@NCWho", SqlDbType.Int) { Value = request.NCCardHolderID },
-//                    new SqlParameter("@NCWhen", SqlDbType.DateTime) { Value = DateTime.Now },
-//                    new SqlParameter("@NCChangedType", SqlDbType.Int) { Value = Convert.ToInt32(CommonConstants.NCChangedType) },
-//                    new SqlParameter("@NCChangedObject", SqlDbType.Int) { Value = request.NCCardId },
-//                    new SqlParameter("@NCChange", SqlDbType.Int) { Value = Convert.ToInt32(CommonConstants.AddCard) },
-//                    new SqlParameter("@NCSubType", SqlDbType.Int) { Value = Convert.ToInt32(CommonConstants.NCSubType) },
-//                    new SqlParameter("@NCSubObject", SqlDbType.Int) { Value = Convert.ToInt32(CommonConstants.NCSubType) },
-//                    new SqlParameter("@NCLog", SqlDbType.VarChar) { Value = CommonConstants.CardAdded },
-//                    new SqlParameter("@NCProcessed", SqlDbType.DateTime) { Value = DateTime.Now},
-//                    new SqlParameter("@NCGeneratedBy", SqlDbType.Int) { Value = request.NCCityCode },
-//                    new SqlParameter("@NCServerTime", SqlDbType.DateTime) { Value =  DateTime.Now},
-                  
-//                };
-//                await _objSql.ExecuteDataSetQueryStringDB(InlineChangeHistory, ChangeHistorycollection);
+        public async Task<List<ReportResponse>> GetTaskReportAsync(ReportRequest request)
+        {    
+            List<ReportResponse> result = new List<ReportResponse>();
+            _logger.LogInformation("deleteTaskAsync Repo -> Start");
+            try
+            {
+                string dateCondition = "";
 
-//                //Insert into DUP table
-//                var InsertDup = InLineQueries.INSERTDUP;
-//                List<SqlParameter> Dupcollection = new List<SqlParameter>
-//                {
-//                    new SqlParameter("@GetDate", SqlDbType.DateTime) { Value = DateTime.Now },
-//                    new SqlParameter("@UpdateBy", SqlDbType.Int) { Value = request.NCCardHolderID }
-//                };
-//                await _objSql.ExecuteDataSetQueryStringDB(InsertDup, Dupcollection);
+                switch (request.interval.ToLower())
+                {
+                    case "week":
+                        dateCondition = "AND ta.createdat >= current_date - interval '7 days'";
+                        break;
+                    case "month":
+                        dateCondition = "AND ta.createdat >= current_date - interval '30 days'";
+                        break;
+                    case "custom":
+                        if (request.startDate.HasValue && request.endDate.HasValue)
+                        {
+                            dateCondition = $"AND ta.createdat >= '{request.startDate.Value.ToString("yyyy-MM-dd")}' " +
+                                            $"AND ta.createdat <= '{request.endDate.Value.ToString("yyyy-MM-dd")}'";
+                        }
+                        break;
+                    default:
+                        // Default to no additional condition
+                        break;
+                }
 
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError($"[CreateDigitalCardAsync] :: Exception: {JsonConvert.SerializeObject(ex)}");
-//                response = new InsertCardDetailDalResponse { IsSuccess = false, Message = ApiError.InternalError };
-//            }
 
-//            _logger.LogInformationEnd();
-//            return response;
-//        }
+                using (var conn = new NpgsqlConnection(_connectionStrings.DBConnectionString))
+                    {
+                        conn.Open();
+                    string sqlQuery = $@"
+                    WITH TotalTasks AS (
+                        SELECT
+                            t.id AS team_id,
+                            t.teamname,
+                            COUNT(*) AS total_tasks
+                        FROM
+                            Teams t
+                        JOIN
+                            TeamMembers tm ON t.id = tm.teamid
+                        JOIN
+                            Tasks ta ON tm.userid = ta.assignedto
+                        WHERE
+                            1=1 {dateCondition}
+                        GROUP BY
+                            t.id, t.teamname
+                    ), ClosedTasks AS (
+                        SELECT
+                            t.id AS team_id,
+                            COUNT(*) AS closed_tasks
+                        FROM
+                            Teams t
+                        JOIN
+                            TeamMembers tm ON t.id = tm.teamid
+                        JOIN
+                            Tasks ta ON tm.userid = ta.assignedto
+                        WHERE
+                            ta.status = 'closed' {dateCondition}
+                        GROUP BY
+                            t.id
+                    )
+                    SELECT
+                        tt.teamname,
+                        COALESCE(ct.closed_tasks, 0) AS closed_tasks,
+                        COALESCE(tt.total_tasks, 0) AS total_tasks
+                    FROM
+                        TotalTasks tt
+                    LEFT JOIN
+                        ClosedTasks ct ON tt.team_id = ct.team_id";
 
-//        public async Task<ReaderGroupIdAndPublicKeyDalResponse> GetReaderGroupIdAndReaderPublicKey(int cardholderid)
-//        {
+                    using (var cmd = new NpgsqlCommand(
+                      sqlQuery, conn))
+                    {
+                        using (var reader = cmd.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                result.Add(new ReportResponse
+                                {
+                                    teamName = reader["teamname"].ToString(),
+                                    totalTasks = Convert.ToInt32(reader["total_tasks"]),
+                                    closedTasks = Convert.ToInt32(reader["closed_tasks"])
+                                });
+                            }
+                        }
+                    }
 
-//            _logger.LogInformationStart("GetReaderGroupIdAndReaderPublicKey - > Request: {Cardholderid}" , cardholderid.ToString());
-//            // Get Db connection key
-//            var response = new ReaderGroupIdAndPublicKeyDalResponse { IsSuccess = true , groupIdAndPublicKey = new List<GroupIdAndPublicKey>() };
-//            try
-//            {
-//                var InlineString = InLineQueries.GetReaderGroupIdAndReaderPublicKey;
-//                List<SqlParameter> paramcollection = new List<SqlParameter>
-//                {
-//                    new SqlParameter(DBParamNames.CardHolderID, SqlDbType.Int)
-//                    {
-//                        Value = cardholderid
-//                    }
+                    conn.Close();
+                    }
 
-//                };
-//                var dalRes = await _objSql.ExecuteDataSetQueryStringDB(InlineString, paramcollection);
+                   return result;
+                }
+                catch (Exception ex)
+                {
 
-//                // Iterate through each DataTable in the DataSet
-//                if (dalRes != null && dalRes.Tables !=null)
-//                {
-//                    foreach (DataTable dataTable in dalRes.Tables)
-//                    {
-//                        // Iterate through each row in the current DataTable
-//                        foreach (DataRow row in dataTable.Rows)
-//                        {
-//                            var Data = new GroupIdAndPublicKey();
-//                            // Access data from the first column using the indexer [0]
-//                            Data.ReaderGroupId= row[0].ToString(); // Assuming the data type is string
-//                            Data.PublicKeys = row[1].ToString(); // Assuming the data type is string
-//                            response.groupIdAndPublicKey.Add(Data);
-//                        }
-//                    }
-//                }
+                    _logger.LogError($"Error inserting task: {ex.Message}");
+                    return null;
+                }
+            
+        }
+        public async Task<List<TaskDetails>> GetEmployeeTaskListAsync(int userid)
+        {
+            _logger.LogInformation("GetEmployeeTaskListAsync Repo -> Start");
+            try
+            {
+                var tasks = await _dbContext.tasks.Where(t => t.assignedTo == userid).ToListAsync();
 
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError($"[GetReaderGroupIdAndReaderPublicKey] :: Exception: {JsonConvert.SerializeObject(ex)}");
-//                response = new ReaderGroupIdAndPublicKeyDalResponse { IsSuccess = false, Message = ApiError.InternalError };
-//            }
-//            _logger.LogInformationEnd();
-//            return response;
-//        }
-//        public async Task<OperationStatus> UpdateAliroCardStatus(UpdateAliroCardRequest request)
-//        {
+                _logger.LogInformation("GetEmployeeTaskListAsync Repo -> End");
+                return tasks;
 
-//            _logger.LogInformationStart("UpdateAliroCardStatus - > Request: {Request}", JsonConvert.SerializeObject(request));
-//            // Get Db connection key
-//            var response = new OperationStatus { IsSuccess = true , Message = SuccessMessage.AliroCardUpdateSuccessMessage };
-//            try
-//            {
-//                var InlineString = string.Empty;
-//                List<SqlParameter> paramcollection = new List<SqlParameter>();
-//                if (string.IsNullOrEmpty(request.ExternalNumber))
-//                {
-//                    InlineString = InLineQueries.UpdateAliroCardByCardholderId;
-//                    SqlParameter commonParameter = new SqlParameter(DBParamNames.CARDHOLDERID, SqlDbType.Int);
-//                    commonParameter.Value = request.CardholderId;
-//                    paramcollection.Add(commonParameter);
-//                }
-//                else
-//                {
-//                    InlineString = InLineQueries.UpdateAliroCardByExternalNumber;
-//                    SqlParameter commonParameter = new SqlParameter(DBParamNames.EXTERNALNUMBER, SqlDbType.VarChar);
-//                    commonParameter.Value = request.ExternalNumber;
-//                    paramcollection.Add(commonParameter);
-//                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error inserting task: {ex.Message}");
+                return null;
+            }
 
-//                var UpdateStatusString = string.Empty;
-//                GetUpdateStringData(request.Cardstatus,ref UpdateStatusString, ref paramcollection);
-//                var dalRes = await _objSql.ExecuteDataSetQueryStringDB(string.Format(InlineString, UpdateStatusString), paramcollection);
-//                var RowAffected = 0;
-//                if(dalRes.Tables.Count > 0)
-//                {
-//                    RowAffected = dalRes.Tables[0].Rows.Count > 0 ? Convert.ToInt32(dalRes.Tables[0].Rows[0][0]) : 0;
-//                }
-//                if(RowAffected == 0) {
-//                    response.Message = SuccessMessage.NORecord;
-//                }
-//            }
-//            catch (Exception ex)
-//            {
-//                _logger.LogError($"[UpdateAliroCardStatus] :: Exception: {JsonConvert.SerializeObject(ex)}");
-//                response = new ReaderGroupIdAndPublicKeyDalResponse { IsSuccess = false, Message = ApiError.InternalError };
-//            }
-//            _logger.LogInformationEnd();
-//            return response;
-//        }
-//        private static void GetUpdateStringData(string CardStatus , ref string status, ref List<SqlParameter> paramcollection)
-//        {
-//            var effectiveDate = DateTime.ParseExact("1990-01-01 00:00:00.000", "yyyy-MM-dd HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture);
-//            var expirationDate = DateTime.ParseExact("3999-12-31 23:59:59.000", "yyyy-MM-dd HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture);
-//            if (CardStatus == Cardstatus.ACTIVE.ToString())
-//            {
-//                SqlParameter parameter1 = new SqlParameter(DBParamNames.NCFlags, SqlDbType.Int);
-//                parameter1.Value = 256;
-//                paramcollection.Add(parameter1);
-//                SqlParameter parameter2 = new SqlParameter(DBParamNames.NCEffective, SqlDbType.DateTime);
-//                parameter2.Value = effectiveDate;
-//                paramcollection.Add(parameter2);
-//                SqlParameter parameter3 = new SqlParameter(DBParamNames.NCExpire, SqlDbType.DateTime);
-//                parameter3.Value = expirationDate;
-//                paramcollection.Add(parameter3);
-//                SqlParameter parameter4 = new SqlParameter(DBParamNames.NCLastUpdate, SqlDbType.DateTime);
-//                parameter4.Value = DateTime.UtcNow;
-//                paramcollection.Add(parameter4);
-//                status = "NCStatus='Authorized',NCFlags = @NCFlags, NCEffective = @NCEffective, NCExpire = @NCExpire , NCLastUpdate = @NCLastUpdate" ;
-//            }
-//            else if(CardStatus == Cardstatus.SUSPENDED.ToString())
-//            {
-//                SqlParameter parameter1 = new SqlParameter(DBParamNames.NCEffective, SqlDbType.DateTime);
-//                parameter1.Value = effectiveDate;
-//                paramcollection.Add(parameter1);
-//                SqlParameter parameter2 = new SqlParameter(DBParamNames.NCExpire, SqlDbType.DateTime);
-//                parameter2.Value = expirationDate;
-//                paramcollection.Add(parameter2);
-//                SqlParameter parameter3 = new SqlParameter(DBParamNames.NCLastUpdate, SqlDbType.DateTime);
-//                parameter3.Value = DateTime.Now;
-//                paramcollection.Add(parameter3);
-//                status = "NCStatus='REVOKE' ,NCEffective = @NCExpire, NCExpire = @NCEffective, NCLastUpdate = @NCLastUpdate";
-//            }
-//            else if(CardStatus == Cardstatus.DELETED.ToString())
-//            {
-//                SqlParameter parameter1 = new SqlParameter(DBParamNames.NCLastUpdate, SqlDbType.DateTime);
-//                parameter1.Value = DateTime.Now;
-//                paramcollection.Add(parameter1);
-//                status = "NCFlags = NCFlags + 1 ,NCLastUpdate = @NCLastUpdate";
-//            }
-//        }
-//    }
-//}
+        }
+
+        public async Task<managerDashboard> GetTasksAndEmployeesListAsync(int teamid)
+        {
+            var res = new managerDashboard() { employeeList = new List<Employee>(), taskList = new List<TaskDetails>() };
+            _logger.LogInformation("GetTasksAndEmployeesListAsync Repo -> Start");
+            try
+            {
+                List<TaskDetails> tasks = new List<TaskDetails>();
+                List<Employee> employees = new List<Employee>();
+
+                using (var conn = new NpgsqlConnection(_connectionStrings.DBConnectionString))
+                {
+                    conn.Open();
+
+                    // Query to get tasks for the specified team
+                    using (var cmdTasks = new NpgsqlCommand(
+                        "SELECT t.id, t.title, t.description, t.status, t.duedate, t.createdby, t.assignedto, t.completedat, t.createdat, t.updatedat " +
+                        "FROM tasks t " +
+                        "JOIN teammembers tm ON t.assignedto = tm.userid " +
+                        "WHERE tm.teamid = @teamId", conn))
+                    {
+                        cmdTasks.Parameters.AddWithValue("teamId", teamid);
+
+                        using (var reader = cmdTasks.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                tasks.Add(new TaskDetails
+                                {
+                                    id = Convert.ToInt32(reader["id"]),
+                                    title = reader["title"].ToString(),
+                                    description = reader["description"].ToString(),
+                                    status = reader["status"].ToString(),
+                                    dueDate = reader["duedate"] == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(reader["duedate"]),
+                                    createdBy = Convert.ToInt32(reader["createdby"]),
+                                    assignedTo = Convert.ToInt32(reader["assignedto"]),
+                                    completedAt = reader["completedat"] == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(reader["completedat"]),
+                                    createdAt = Convert.ToDateTime(reader["createdat"]),
+                                    updatedAt = Convert.ToDateTime(reader["updatedat"])
+                                });
+                            }
+                        }
+                    }
+                    using (var cmdEmployees = new NpgsqlCommand(
+                    "SELECT u.userid, u.email, u.fullname, u.role " +
+                    "FROM users u " +
+                    "JOIN teammembers tm ON u.userid = tm.userid " +
+                    "WHERE tm.teamid = @teamId", conn))
+                    {
+                        cmdEmployees.Parameters.AddWithValue("teamId", teamid);
+
+                        using (var reader = cmdEmployees.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                employees.Add(new Employee
+                                {
+                                    id = Convert.ToInt32(reader["userid"]),
+                                    fullName = reader["fullname"].ToString()
+                                });
+                            }
+                        }
+                    }
+
+
+                    conn.Close();
+                }
+
+                res.employeeList = employees;
+                res.taskList = tasks;
+                _logger.LogInformation("GetTasksAndEmployeesListAsync Repo -> End");
+                
+
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error inserting task: {ex.Message}");
+                res.taskList = null;
+                res.employeeList = null;
+            }
+            return res;
+
+        }
+
+        public async Task<TaskDetailsEmployee> GetTaskDetailsEmployeeAsync(int taskid)
+        {
+            var res = new TaskDetailsEmployee() { };
+            _logger.LogInformation("GetTaskDetailsEmployee Repo -> Start");
+            try
+            {
+
+                using (var conn = new NpgsqlConnection(_connectionStrings.DBConnectionString))
+                {
+                    conn.Open();
+
+                    // Query to fetch task details
+                    using (var cmdTask = new NpgsqlCommand(
+                        "SELECT t.id, t.title, t.description, t.status, t.duedate, t.createdby, t.assignedto, t.completedat, t.createdat, t.updatedat " +
+                        "FROM tasks t " +
+                        "WHERE t.id = @taskId", conn))
+                    {
+                        cmdTask.Parameters.AddWithValue("taskId", taskid);
+
+                        using (var reader = cmdTask.ExecuteReader())
+                        {
+                            if (reader.Read())
+                            {
+                                res = new TaskDetailsEmployee
+                                {
+                                    id = Convert.ToInt32(reader["id"]),
+                                    title = reader["title"].ToString(),
+                                    description = reader["description"].ToString(),
+                                    status = reader["status"].ToString(),
+                                    dueDate = reader["duedate"] == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(reader["duedate"]),
+                                    createdBy = Convert.ToInt32(reader["createdby"]),
+                                    assignedTo = Convert.ToInt32(reader["assignedto"]),
+                                    completedAt = reader["completedat"] == DBNull.Value ? (DateTime?)null : Convert.ToDateTime(reader["completedat"]),
+                                    createdAt = Convert.ToDateTime(reader["createdat"]),
+                                    updatedAt = Convert.ToDateTime(reader["updatedat"]),
+                                    notes = new List<Note>(),
+                                    documents = new List<Attachment>()
+                                };
+                            }
+                        }
+                    }
+
+                    // Query to fetch notes for the task
+                    using (var cmdNotes = new NpgsqlCommand(
+                        "SELECT id, taskid, content, createdby, createdat " +
+                        "FROM notes " +
+                        "WHERE taskid = @taskId", conn))
+                    {
+                        cmdNotes.Parameters.AddWithValue("taskId", taskid);
+
+                        using (var reader = cmdNotes.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                res.notes.Add(new Note
+                                {
+                                    id = Convert.ToInt32(reader["id"]),
+                                    content = reader["content"].ToString(),
+                                    createdDate = Convert.ToDateTime(reader["createdat"])
+                                });
+                            }
+                        }
+                    }
+
+                    // Query to fetch attachments (documents) for the task
+                    using (var cmdAttachments = new NpgsqlCommand(
+                        "SELECT id, taskid, filename, filepath, uploadedby, uploadedat " +
+                        "FROM attachments " +
+                        "WHERE taskid = @taskId", conn))
+                    {
+                        cmdAttachments.Parameters.AddWithValue("taskId", taskid);
+
+                        using (var reader = cmdAttachments.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                res.documents.Add(new Attachment
+                                {
+                                    id = Convert.ToInt32(reader["id"]),
+                                    filename = reader["filename"].ToString(),
+                                    filepath = reader["filepath"].ToString()
+                                });
+                            }
+                        }
+                    }
+
+                    conn.Close();
+                }
+                 
+                _logger.LogInformation("GetTasksAndEmployeesListAsync Repo -> End");
+
+
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error inserting task: {ex.Message}");
+                res = null;
+            }
+            return res;
+
+        }
+        public async Task<int> AddTaskNoteAsync(Note newNote)
+        {
+            int generatedId = 0;
+            _logger.LogInformation("AddTaskNoteAsync Repo -> Start");
+            try
+            {
+                
+
+                using (var conn = new NpgsqlConnection(_connectionStrings.DBConnectionString))
+                {
+                    conn.Open();
+
+                    // Insert command to add a new note and return the generated id
+                    using (var cmdInsert = new NpgsqlCommand(
+                        "INSERT INTO notes (taskid, content, createdby, createdat) " +
+                        "VALUES (@taskid, @content, @createdby, @createdat) " +
+                        "RETURNING id", conn))
+                    {
+                        cmdInsert.Parameters.AddWithValue("taskid", newNote.taskId);
+                        cmdInsert.Parameters.AddWithValue("content", newNote.content);
+                        cmdInsert.Parameters.AddWithValue("createdby", newNote.createdBy);
+                        cmdInsert.Parameters.AddWithValue("createdat", newNote.createdDate);
+
+                        // Execute the command and retrieve the generated id
+                        generatedId = Convert.ToInt32(cmdInsert.ExecuteScalar());
+                    }
+
+                    conn.Close();
+                }
+
+            }
+            catch (Exception ex)
+            {
+          
+                _logger.LogError($"Error inserting task: {ex.Message}");
+            }
+            _logger.LogInformation("AddTaskNoteAsync Repo -> End");
+            return generatedId;
+        }
+        public async Task<int> AddTaskAttachmentAsync(Attachment newAttachment)
+        {
+            int generatedId = 0;
+            _logger.LogInformation("AddTaskNoteAsync Repo -> Start");
+            try
+            {
+
+
+                using (var conn = new NpgsqlConnection(_connectionStrings.DBConnectionString))
+                {
+                    conn.Open();
+
+                    // Insert command to add a new attachment and return the generated id
+                    using (var cmdInsert = new NpgsqlCommand(
+                        "INSERT INTO attachments (taskid, filename, filepath, uploadedby, uploadedat) " +
+                        "VALUES (@taskid, @filename, @filepath, @uploadedby, @uploadedat) " +
+                        "RETURNING id", conn))
+                    {
+                        cmdInsert.Parameters.AddWithValue("taskid", newAttachment.taskid);
+                        cmdInsert.Parameters.AddWithValue("filename", newAttachment.filename);
+                        cmdInsert.Parameters.AddWithValue("filepath", newAttachment.filepath);
+                        cmdInsert.Parameters.AddWithValue("uploadedby", newAttachment.uploadedby);
+                        cmdInsert.Parameters.AddWithValue("uploadedat", newAttachment.uploadedat);
+
+                        // Execute the command and retrieve the generated id
+                        generatedId = Convert.ToInt32(cmdInsert.ExecuteScalar());
+                    }
+
+                    conn.Close();
+                }
+
+
+            }
+            catch (Exception ex)
+            {
+
+                _logger.LogError($"Error inserting task: {ex.Message}");
+            }
+            _logger.LogInformation("AddTaskNoteAsync Repo -> End");
+            return generatedId;
+        }
+
+
+
+    }
+}

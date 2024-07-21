@@ -10,7 +10,7 @@ namespace TaskManagementAPI.Controllers
     /// </summary>
     [Route("tapi/v1/[controller]")]
     [ApiController]
-    public class TaskManagementController : ControllerBase
+    public class TaskManagementController : SecureController
     {
 
         private readonly ITaskManagementManager _taskManagementManager;
